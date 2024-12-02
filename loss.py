@@ -50,7 +50,8 @@ class HSIAdvLoss(nn.Module):
         
         # Generate adversarial example
         perturbed_data = data.detach() + perturbation
-        perturbed_data = torch.clamp(perturbed_data, data.min(), data.max())
+        # Clamp to [-3, 3] range for standardized data
+        perturbed_data = torch.clamp(perturbed_data, -3, 3)
         
         return perturbed_data
 

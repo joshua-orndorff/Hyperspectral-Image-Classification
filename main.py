@@ -20,27 +20,27 @@ from loss import HSIAdvLoss
 CONFIG = {
     'data': {
         'dataset': 'KSC',
-        'data_dir': 'Final/Data',
-        'patch_size': 9,
-        'batch_size': 32,
+        'data_dir': 'Data',
+        'patch_size': 3,
+        'batch_size': 8,
         'train_size' : .2,
-        'val_size' : .6
+        'val_size' : .2
     },
     'training': {
-        'num_epochs': 100,
+        'num_epochs': 200,
         'learning_rate': 0.0001,
         'weight_decay': 1e-4,
         'patience': 20
     },
     'paths': {
-        'checkpoints': 'Final/checkpoints',
-        'visualizations': 'Final/Visualizations',
-        'results': 'Final/Results'
+        'checkpoints': 'checkpoints',
+        'visualizations': 'Visualizations',
+        'results': 'Results'
     },
     'files': {
-        'training_plot': 'Final/Visualizations/training_history.png',
-        'confusion_matrix': 'Final/Results/confusion_matrix.png',
-        'best_model': 'Final/checkpoints/best_model.pth'
+        'training_plot': 'Visualizations/training_history.png',
+        'confusion_matrix': 'Results/confusion_matrix.png',
+        'best_model': 'checkpoints/best_model.pth'
     }
 }
 
@@ -275,7 +275,7 @@ def train_model(model, train_loader, val_loader, device, config):
     }
     
     # Initialize training components
-    criterion = HSIAdvLoss(model, epsilon=0.1, alpha=0.1)
+    criterion = HSIAdvLoss(model, epsilon=0.06, alpha=0.1)
     optimizer = optim.AdamW(model.parameters(), 
                            lr=config['training']['learning_rate'],
                            weight_decay=config['training']['weight_decay'])
@@ -411,12 +411,13 @@ def evaluate_model(model, test_loader, device, num_classes):
 def fgsm_attack(data, epsilon, data_grad):
     """Generate FGSM attack."""
     # Create the perturbed image by adjusting each pixel of the input image
-    perturbed_data = data + epsilon * data_grad.sign()
-    # Ensure data stays within valid spectral range after perturbation
-    perturbed_data = torch.clamp(perturbed_data, 0, 1)
+    perturbation = epsilon * data_grad.sign()
+    perturbed_data = data + perturbation
+    # Ensure data stays within [-3, 3] for standardized data
+    perturbed_data = torch.clamp(perturbed_data, -3, 3)
     return perturbed_data
 
-def evaluate_model_with_attacks(model, test_loader, device, num_classes, epsilon=0.03):
+def evaluate_model_with_attacks(model, test_loader, device, num_classes, epsilon=0.06):
     """
     Evaluate model performance with adversarial attacks.
     
@@ -435,16 +436,30 @@ def evaluate_model_with_attacks(model, test_loader, device, num_classes, epsilon
     print("\nEvaluating model against FGSM attacks...")
     progress = tqdm(test_loader, desc='Testing with FGSM')
     
-    for data, labels in progress:
-        data, labels = data.to(device), labels.to(device)
+    for data, label_patches in progress:
+        data, label_patches = data.to(device), label_patches.to(device)
         
         # Forward pass on clean data
         data.requires_grad = True
         outputs = model(data)
+        
+        # Reshape outputs to match label patches
+        batch_size = outputs.size(0)
+        num_classes = outputs.size(1)
+        patch_size = label_patches.size(1)
+        outputs = outputs.view(batch_size, num_classes, patch_size, patch_size)
+        
+        # Get valid mask
+        valid_mask = (label_patches != 0)
+        
         clean_predictions = outputs.argmax(dim=1)
         
-        # Calculate loss for gradient computation
-        loss = F.cross_entropy(outputs, labels)
+        # Calculate loss for gradient computation using masked loss
+        loss = F.cross_entropy(
+            outputs.permute(0, 2, 3, 1).reshape(-1, num_classes),
+            label_patches.reshape(-1),
+            ignore_index=0
+        )
         
         # Get gradient of loss with respect to input data
         loss.backward()
@@ -456,20 +471,22 @@ def evaluate_model_with_attacks(model, test_loader, device, num_classes, epsilon
         # Forward pass on perturbed data
         with torch.no_grad():
             adv_outputs = model(perturbed_data)
+            # Reshape adversarial outputs to match patch structure
+            adv_outputs = adv_outputs.view(batch_size, num_classes, patch_size, patch_size)
             predictions = adv_outputs.argmax(dim=1)
         
         # Move predictions back to CPU and flatten
         predictions = predictions.cpu().numpy()
         clean_predictions = clean_predictions.cpu().numpy()
-        labels = labels.cpu().numpy()
-        
+        label_patches = label_patches.cpu().numpy()   # Changed from labels to label_patches
+
         # Handle patches: get valid pixels (non-zero labels)
-        valid_mask = (labels != 0)
-        
+        valid_mask = (label_patches != 0)   # Changed from labels to label_patches
+
         # Append only valid predictions and labels
         all_preds.extend(predictions[valid_mask].flatten())
         all_clean_preds.extend(clean_predictions[valid_mask].flatten())
-        all_labels.extend(labels[valid_mask].flatten())
+        all_labels.extend(label_patches[valid_mask].flatten())   # Changed from labels to label_patches
     
     # Convert to numpy arrays
     all_preds = np.array(all_preds)
@@ -624,7 +641,7 @@ def main():
 
     print("\nAdversarial Evaluation:")
     adv_test_metrics = evaluate_model_with_attacks(model, test_loader, device, 
-                                                info['num_classes'], epsilon=0.2)
+                                                info['num_classes'], epsilon=0.06)
 
     # Plot confusion matrices
     class_names = [f'Class {i}' for i in range(info['num_classes'])]

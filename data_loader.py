@@ -11,7 +11,7 @@ import random
 
 class HSIDataLoader:
     def __init__(self, dataset_name, data_dir='Final/Data', patch_size=9, 
-                 batch_size=32, train_split=0.7, val_split=0.15,
+                 batch_size=32, train_split=0.2, val_split=0.6,
                  random_seed=42, num_workers=4):
         """
         Initialize HSI Data Loader
@@ -174,24 +174,36 @@ class HSIDataLoader:
         return PatchDataset(data, labels, self.patch_size, train)
     
     def _split_data(self):
-        """Split data into train, validation, and test sets"""
+        """Split data into train, validation, and test sets with stratification"""
         height, width = self.labels.shape
-        indices = [(i, j) for i in range(height) for j in range(width) 
-                  if self.labels[i, j] != 0]
+        # Create list of (position, class) tuples for non-zero labels
+        labeled_pixels = [(i, j, self.labels[i, j]) 
+                        for i in range(height) 
+                        for j in range(width) 
+                        if self.labels[i, j] != 0]
         
-        # Split indices
-        train_idx, temp_idx = train_test_split(
-            indices, 
-            train_size=self.train_split,
-            random_state=self.random_seed
-        )
+        # Group indices by class
+        class_indices = {}
+        for i, j, label in labeled_pixels:
+            if label not in class_indices:
+                class_indices[label] = []
+            class_indices[label].append((i, j))
         
-        val_size = self.val_split / (1 - self.train_split)
-        val_idx, test_idx = train_test_split(
-            temp_idx,
-            train_size=val_size,
-            random_state=self.random_seed
-        )
+        # Split each class proportionally
+        train_idx, val_idx, test_idx = [], [], []
+        for class_label, indices in class_indices.items():
+            n_samples = len(indices)
+            n_train = int(n_samples * self.train_split)
+            n_val = int(n_samples * self.val_split)
+            
+            # Shuffle indices
+            shuffled_indices = indices.copy()
+            random.shuffle(shuffled_indices)
+            
+            # Split
+            train_idx.extend(shuffled_indices[:n_train])
+            val_idx.extend(shuffled_indices[n_train:n_train + n_val])
+            test_idx.extend(shuffled_indices[n_train + n_val:])
         
         # Create masks
         train_mask = np.zeros_like(self.labels)
@@ -204,6 +216,44 @@ class HSIDataLoader:
             val_mask[i, j] = self.labels[i, j]
         for i, j in test_idx:
             test_mask[i, j] = self.labels[i, j]
+        
+        # Print class distribution
+        def get_class_distribution(mask):
+            unique, counts = np.unique(mask, return_counts=True)
+            return dict(zip(unique, counts))
+        
+        print("\nClass Distribution (excluding background class 0):")
+        print("\nTraining Set:")
+        train_dist = get_class_distribution(train_mask)
+        for class_label in sorted(train_dist.keys()):
+            if class_label != 0:  # Skip background class
+                print(f"Class {class_label}: {train_dist[class_label]} samples")
+        
+        print("\nValidation Set:")
+        val_dist = get_class_distribution(val_mask)
+        for class_label in sorted(val_dist.keys()):
+            if class_label != 0:
+                print(f"Class {class_label}: {val_dist[class_label]} samples")
+        
+        print("\nTest Set:")
+        test_dist = get_class_distribution(test_mask)
+        for class_label in sorted(test_dist.keys()):
+            if class_label != 0:
+                print(f"Class {class_label}: {test_dist[class_label]} samples")
+        
+        # Print split percentages for each class
+        print("\nActual Split Percentages per Class:")
+        for class_label in sorted(class_indices.keys()):
+            total = (train_dist.get(class_label, 0) + 
+                    val_dist.get(class_label, 0) + 
+                    test_dist.get(class_label, 0))
+            train_pct = train_dist.get(class_label, 0) / total * 100
+            val_pct = val_dist.get(class_label, 0) / total * 100
+            test_pct = test_dist.get(class_label, 0) / total * 100
+            print(f"\nClass {class_label}:")
+            print(f"Train: {train_pct:.1f}%")
+            print(f"Val: {val_pct:.1f}%")
+            print(f"Test: {test_pct:.1f}%")
         
         return train_mask, val_mask, test_mask
     
