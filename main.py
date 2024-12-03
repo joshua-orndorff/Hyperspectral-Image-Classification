@@ -19,10 +19,10 @@ from loss import HSIAdvLoss
 # Configuration
 CONFIG = {
     'data': {
-        'dataset': 'KSC',
+        'dataset': 'Salinas',
         'data_dir': 'Data',
-        'patch_size': 3,
-        'batch_size': 8,
+        'patch_size': 7,
+        'batch_size': 32,
         'train_size' : .2,
         'val_size' : .2
     },
@@ -126,19 +126,7 @@ def plot_confusion_matrix(conf_matrix, class_names, save_path):
     plt.close()
 
 def train_epoch(model, train_loader, criterion, optimizer, device):
-    """
-    Train for one epoch.
-    
-    Args:
-        model: The neural network model
-        train_loader: DataLoader for training data
-        criterion: Loss function
-        optimizer: Optimizer
-        device: Device to train on
-    
-    Returns:
-        dict: Average training metrics for the epoch
-    """
+    """Train for one epoch with center pixel classification."""
     metrics_sum = {
         'standard_loss': 0.0,
         'accuracy': 0.0,
@@ -150,36 +138,25 @@ def train_epoch(model, train_loader, criterion, optimizer, device):
     
     train_progress = tqdm(train_loader, desc='Training')
     for batch_idx, (inputs, labels) in enumerate(train_progress):
-        # Move data to device
         inputs, labels = inputs.to(device), labels.to(device)
         
-        # Zero gradients
         optimizer.zero_grad()
-        
-        # Forward pass and loss calculation
         loss, batch_metrics = criterion(inputs, labels, training=True)
         
-        # Backward pass and optimization
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
         
-        # Update metrics
         for key in metrics_sum:
             if key in batch_metrics:
                 metrics_sum[key] += batch_metrics[key]
         
-        # Update progress bar
         train_progress.set_postfix_str(criterion.get_metrics_string(batch_metrics))
     
-    # Calculate averages
-    avg_metrics = {k: v / num_batches for k, v in metrics_sum.items()}
-    return avg_metrics
+    return {k: v / num_batches for k, v in metrics_sum.items()}
 
 def validate_epoch(model, val_loader, criterion, device):
-    """
-    Validate for one epoch with adversarial metrics.
-    """
+    """Validate for one epoch with center pixel predictions."""
     metrics_sum = {
         'standard_loss': 0.0,
         'accuracy': 0.0,
@@ -192,29 +169,19 @@ def validate_epoch(model, val_loader, criterion, device):
     model.eval()
     val_progress = tqdm(val_loader, desc='Validation')
     
-    for batch_idx, (inputs, labels) in enumerate(val_progress):
-        inputs, labels = inputs.to(device), labels.to(device)
-        
-        # Forward pass with adversarial evaluation
-        loss, batch_metrics = criterion(inputs, labels, training=True)  # Set to True to compute adversarial metrics
-        
-        # Update metrics
-        for key in metrics_sum:
-            if key in batch_metrics:
-                metrics_sum[key] += batch_metrics[key]
-        
-        # Update progress bar with all metrics
-        val_metrics_str = (
-            f"Loss: {batch_metrics['standard_loss']:.4f} | "
-            f"Acc: {batch_metrics['accuracy']:.4f} | "
-            f"Adv_Loss: {batch_metrics.get('adversarial_loss', 0):.4f} | "
-            f"Adv_Acc: {batch_metrics.get('adversarial_accuracy', 0):.4f}"
-        )
-        val_progress.set_postfix_str(val_metrics_str)
+    with torch.no_grad():
+        for batch_idx, (inputs, labels) in enumerate(val_progress):
+            inputs, labels = inputs.to(device), labels.to(device)
+            
+            loss, batch_metrics = criterion(inputs, labels, training=True)
+            
+            for key in metrics_sum:
+                if key in batch_metrics:
+                    metrics_sum[key] += batch_metrics[key]
+            
+            val_progress.set_postfix_str(criterion.get_metrics_string(batch_metrics))
     
-    # Calculate averages
-    avg_metrics = {k: v / num_batches for k, v in metrics_sum.items()}
-    return avg_metrics
+    return {k: v / num_batches for k, v in metrics_sum.items()}
 
 def update_history(history, train_metrics, val_metrics, epoch_time):
     """
@@ -275,7 +242,7 @@ def train_model(model, train_loader, val_loader, device, config):
     }
     
     # Initialize training components
-    criterion = HSIAdvLoss(model, epsilon=0.06, alpha=0.1)
+    criterion = HSIAdvLoss(model, epsilon=0.03, alpha=0.1)
     optimizer = optim.AdamW(model.parameters(), 
                            lr=config['training']['learning_rate'],
                            weight_decay=config['training']['weight_decay'])
@@ -321,18 +288,7 @@ def train_model(model, train_loader, val_loader, device, config):
     return history
 
 def evaluate_model(model, test_loader, device, num_classes):
-    """
-    Evaluate the model on the test set with proper patch handling.
-    
-    Args:
-        model: Trained PyTorch model
-        test_loader: DataLoader containing test data
-        device: Device to run evaluation on
-        num_classes: Number of classes in the dataset
-        
-    Returns:
-        dict: Dictionary containing evaluation metrics
-    """
+    """Evaluate the model on the test set with center pixel predictions."""
     model.eval()
     all_preds = []
     all_labels = []
@@ -340,50 +296,36 @@ def evaluate_model(model, test_loader, device, num_classes):
     print("\nEvaluating model on test set...")
     with torch.no_grad():
         for data, labels in tqdm(test_loader):
-            # Move data to device
             data = data.to(device)
-            
-            # Get predictions
             outputs = model(data)
             predictions = outputs.argmax(dim=1)
             
-            # Move predictions back to CPU and flatten
             predictions = predictions.cpu().numpy()
             labels = labels.numpy()
             
-            # Handle patches: get valid pixels (non-zero labels)
             valid_mask = (labels != 0)
-            
-            # Append only valid predictions and labels
-            all_preds.extend(predictions[valid_mask].flatten())
-            all_labels.extend(labels[valid_mask].flatten())
+            all_preds.extend(predictions[valid_mask])
+            all_labels.extend(labels[valid_mask])
     
-    # Convert to numpy arrays
     all_preds = np.array(all_preds)
     all_labels = np.array(all_labels)
     
-    # Calculate confusion matrix using sklearn's confusion_matrix
-    conf_matrix = confusion_matrix(all_labels, all_preds, 
-                                 labels=range(num_classes))
+    conf_matrix = confusion_matrix(all_labels, all_preds, labels=range(num_classes))
     
-    # Calculate per-class accuracy with warning suppression
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         class_acc = np.zeros(num_classes)
         for i in range(num_classes):
-            if conf_matrix[i].sum() > 0:  # Only calculate if class exists
+            if conf_matrix[i].sum() > 0:
                 class_acc[i] = conf_matrix[i, i] / conf_matrix[i].sum()
     
-    # Calculate overall accuracy
     overall_acc = accuracy_score(all_labels, all_preds)
     
-    # Generate detailed classification report
     class_report = classification_report(all_labels, all_preds, 
                                       labels=range(num_classes),
                                       zero_division=0,
                                       output_dict=True)
     
-    # Store results
     results = {
         'overall_accuracy': overall_acc,
         'class_accuracy': class_acc,
@@ -391,20 +333,6 @@ def evaluate_model(model, test_loader, device, num_classes):
         'classification_report': class_report,
         'num_samples': len(all_labels)
     }
-    
-    # Print summary
-    print("\nTest Set Evaluation Results:")
-    print(f"Overall Accuracy: {overall_acc:.4f}")
-    print("\nPer-class Accuracy:")
-    for i in range(1, num_classes):  # Skip background class (0)
-        if conf_matrix[i].sum() > 0:  # Only print if class exists
-            print(f"Class {i}: {class_acc[i]:.4f} "
-                  f"(Samples: {conf_matrix[i].sum()})")
-    
-    # Print confusion matrix summary
-    print("\nConfusion Matrix Summary:")
-    print(f"Total samples: {conf_matrix.sum()}")
-    print(f"Correct predictions: {conf_matrix.diagonal().sum()}")
     
     return results
 
@@ -417,93 +345,18 @@ def fgsm_attack(data, epsilon, data_grad):
     perturbed_data = torch.clamp(perturbed_data, -3, 3)
     return perturbed_data
 
-def evaluate_model_with_attacks(model, test_loader, device, num_classes, epsilon=0.06):
-    """
-    Evaluate model performance with adversarial attacks.
-    
-    Args:
-        model: Trained model
-        test_loader: Test data loader
-        device: Device to run evaluation on
-        num_classes: Number of classes
-        epsilon: Attack strength parameter
-    """
-    model.eval()
-    all_preds = []
-    all_labels = []
-    all_clean_preds = []
-    
-    print("\nEvaluating model against FGSM attacks...")
-    progress = tqdm(test_loader, desc='Testing with FGSM')
-    
-    for data, label_patches in progress:
-        data, label_patches = data.to(device), label_patches.to(device)
-        
-        # Forward pass on clean data
-        data.requires_grad = True
-        outputs = model(data)
-        
-        # Reshape outputs to match label patches
-        batch_size = outputs.size(0)
-        num_classes = outputs.size(1)
-        patch_size = label_patches.size(1)
-        outputs = outputs.view(batch_size, num_classes, patch_size, patch_size)
-        
-        # Get valid mask
-        valid_mask = (label_patches != 0)
-        
-        clean_predictions = outputs.argmax(dim=1)
-        
-        # Calculate loss for gradient computation using masked loss
-        loss = F.cross_entropy(
-            outputs.permute(0, 2, 3, 1).reshape(-1, num_classes),
-            label_patches.reshape(-1),
-            ignore_index=0
-        )
-        
-        # Get gradient of loss with respect to input data
-        loss.backward()
-        data_grad = data.grad.data
-        
-        # Generate adversarial examples
-        perturbed_data = fgsm_attack(data, epsilon, data_grad)
-        
-        # Forward pass on perturbed data
-        with torch.no_grad():
-            adv_outputs = model(perturbed_data)
-            # Reshape adversarial outputs to match patch structure
-            adv_outputs = adv_outputs.view(batch_size, num_classes, patch_size, patch_size)
-            predictions = adv_outputs.argmax(dim=1)
-        
-        # Move predictions back to CPU and flatten
-        predictions = predictions.cpu().numpy()
-        clean_predictions = clean_predictions.cpu().numpy()
-        label_patches = label_patches.cpu().numpy()   # Changed from labels to label_patches
-
-        # Handle patches: get valid pixels (non-zero labels)
-        valid_mask = (label_patches != 0)   # Changed from labels to label_patches
-
-        # Append only valid predictions and labels
-        all_preds.extend(predictions[valid_mask].flatten())
-        all_clean_preds.extend(clean_predictions[valid_mask].flatten())
-        all_labels.extend(label_patches[valid_mask].flatten())   # Changed from labels to label_patches
-    
-    # Convert to numpy arrays
+def calculate_adversarial_metrics(all_preds, all_clean_preds, all_labels, num_classes):
+    """Calculate metrics for both clean and adversarial predictions."""
     all_preds = np.array(all_preds)
     all_clean_preds = np.array(all_clean_preds)
     all_labels = np.array(all_labels)
     
-    # Calculate metrics for clean and adversarial examples
     clean_acc = accuracy_score(all_labels, all_clean_preds)
     adv_acc = accuracy_score(all_labels, all_preds)
     
-    # Calculate confusion matrices
-    clean_conf_matrix = confusion_matrix(all_labels, all_clean_preds, 
-                                       labels=range(num_classes))
-    adv_conf_matrix = confusion_matrix(all_labels, all_preds, 
-                                     labels=range(num_classes))
+    clean_conf_matrix = confusion_matrix(all_labels, all_clean_preds, labels=range(num_classes))
+    adv_conf_matrix = confusion_matrix(all_labels, all_preds, labels=range(num_classes))
     
-    # Calculate per-class accuracy
     clean_class_acc = np.zeros(num_classes)
     adv_class_acc = np.zeros(num_classes)
     
@@ -513,8 +366,7 @@ def evaluate_model_with_attacks(model, test_loader, device, num_classes, epsilon
         if adv_conf_matrix[i].sum() > 0:
             adv_class_acc[i] = adv_conf_matrix[i, i] / adv_conf_matrix[i].sum()
     
-    # Store results
-    results = {
+    return {
         'clean_accuracy': clean_acc,
         'adversarial_accuracy': adv_acc,
         'clean_class_accuracy': clean_class_acc,
@@ -522,20 +374,106 @@ def evaluate_model_with_attacks(model, test_loader, device, num_classes, epsilon
         'clean_confusion_matrix': clean_conf_matrix,
         'adversarial_confusion_matrix': adv_conf_matrix
     }
+
+def print_adversarial_results(results, num_classes):
+    """
+    Print a detailed summary of adversarial evaluation results.
     
-    # Print summary
-    print("\nTest Set Results:")
-    print(f"Clean Overall Accuracy: {clean_acc:.4f}")
-    print(f"Adversarial Overall Accuracy: {adv_acc:.4f}")
-    print(f"Accuracy Drop: {clean_acc - adv_acc:.4f}")
+    Args:
+        results: Dictionary containing adversarial evaluation metrics
+        num_classes: Total number of classes in the dataset
+    """
+    print("\nAdversarial Evaluation Results Summary")
+    print("=====================================")
     
-    print("\nPer-class Accuracy:")
+    print("\nOverall Performance:")
+    print(f"Clean Accuracy: {results['clean_accuracy']:.4f}")
+    print(f"Adversarial Accuracy: {results['adversarial_accuracy']:.4f}")
+    print(f"Robustness Gap: {results['clean_accuracy'] - results['adversarial_accuracy']:.4f}")
+    
+    print("\nPer-Class Performance:")
+    print("---------------------")
     for i in range(1, num_classes):  # Skip background class (0)
-        if adv_conf_matrix[i].sum() > 0:
-            print(f"Class {i}:")
-            print(f"  Clean: {clean_class_acc[i]:.4f}")
-            print(f"  Adversarial: {adv_class_acc[i]:.4f}")
-            print(f"  Drop: {clean_class_acc[i] - adv_class_acc[i]:.4f}")
+        total_samples = results['clean_confusion_matrix'][i].sum()
+        if total_samples > 0:
+            clean_acc = results['clean_class_accuracy'][i]
+            adv_acc = results['adversarial_class_accuracy'][i]
+            acc_drop = clean_acc - adv_acc
+            
+            print(f"\nClass {i}:")
+            print(f"  Total Samples: {total_samples}")
+            print(f"  Clean Accuracy: {clean_acc:.4f}")
+            print(f"  Adversarial Accuracy: {adv_acc:.4f}")
+            print(f"  Accuracy Drop: {acc_drop:.4f}")
+            
+            # Calculate and display confusion rates
+            clean_confusion = results['clean_confusion_matrix'][i]
+            adv_confusion = results['adversarial_confusion_matrix'][i]
+            
+            if clean_confusion.sum() > 0:
+                clean_misclass_rate = 1 - (clean_confusion[i] / clean_confusion.sum())
+                print(f"  Clean Misclassification Rate: {clean_misclass_rate:.4f}")
+            
+            if adv_confusion.sum() > 0:
+                adv_misclass_rate = 1 - (adv_confusion[i] / adv_confusion.sum())
+                print(f"  Adversarial Misclassification Rate: {adv_misclass_rate:.4f}")
+    
+    print("\nOverall Statistics:")
+    print("-----------------")
+    clean_correct = np.sum(np.diag(results['clean_confusion_matrix']))
+    adv_correct = np.sum(np.diag(results['adversarial_confusion_matrix']))
+    total_samples = np.sum(results['clean_confusion_matrix'])
+    
+    print(f"Total Samples Evaluated: {total_samples}")
+    print(f"Clean Correct Predictions: {clean_correct}")
+    print(f"Adversarial Correct Predictions: {adv_correct}")
+    print(f"Additional Misclassifications under Attack: {clean_correct - adv_correct}")
+    
+    # Calculate robustness score
+    robustness_score = adv_correct / clean_correct if clean_correct > 0 else 0
+    print(f"Robustness Score: {robustness_score:.4f}")
+
+def evaluate_model_with_attacks(model, test_loader, device, num_classes, epsilon=0.03):
+    """Evaluate model performance against adversarial attacks with center pixel predictions."""
+    model.eval()
+    all_preds = []
+    all_labels = []
+    all_clean_preds = []
+    
+    print("\nEvaluating model against FGSM attacks...")
+    progress = tqdm(test_loader, desc='Testing with FGSM')
+    
+    for data, labels in progress:
+        data, labels = data.to(device), labels.to(device)
+        
+        data.requires_grad = True
+        outputs = model(data)
+        
+        valid_mask = (labels != 0)
+        
+        clean_predictions = outputs.argmax(dim=1)
+        
+        loss = F.cross_entropy(outputs[valid_mask], labels[valid_mask])
+        loss.backward()
+        
+        perturbed_data = fgsm_attack(data, epsilon, data.grad.data)
+        
+        with torch.no_grad():
+            adv_outputs = model(perturbed_data)
+            predictions = adv_outputs.argmax(dim=1)
+        
+        predictions = predictions.cpu().numpy()
+        clean_predictions = clean_predictions.cpu().numpy()
+        labels = labels.cpu().numpy()
+        
+        valid_mask = labels != 0
+        
+        all_preds.extend(predictions[valid_mask])
+        all_clean_preds.extend(clean_predictions[valid_mask])
+        all_labels.extend(labels[valid_mask])
+    
+    results = calculate_adversarial_metrics(all_preds, all_clean_preds, all_labels, num_classes)
+    print_adversarial_results(results, num_classes)
     
     return results
 
@@ -641,7 +579,7 @@ def main():
 
     print("\nAdversarial Evaluation:")
     adv_test_metrics = evaluate_model_with_attacks(model, test_loader, device, 
-                                                info['num_classes'], epsilon=0.06)
+                                                info['num_classes'], epsilon=0.03)
 
     # Plot confusion matrices
     class_names = [f'Class {i}' for i in range(info['num_classes'])]

@@ -126,6 +126,25 @@ class TransformerBlock(nn.Module):
         return x
 
 class SpectralFormer(nn.Module):
+    def _init_weights(self, m):
+        """
+        Initialize the weights of the model's layers.
+        
+        Args:
+            m: Module to initialize
+        """
+        if isinstance(m, nn.Conv2d):
+            nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.BatchNorm2d):
+            nn.init.constant_(m.weight, 1)
+            nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.Linear):
+            nn.init.normal_(m.weight, std=0.02)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+    
     def __init__(self, num_spectral_bands, num_classes, patch_size=9):
         super(SpectralFormer, self).__init__()
         
@@ -194,7 +213,7 @@ class SpectralFormer(nn.Module):
             ) for output_size in [(1, 1), (2, 2), (3, 3), (6, 6)]
         ])
         
-        # Enhanced classifier
+        # Modified classifier for center pixel
         pyramid_dim = 256 + (64 * 4)
         self.classifier = nn.Sequential(
             nn.Conv2d(pyramid_dim, 512, kernel_size=3, padding=1, groups=8),
@@ -215,8 +234,8 @@ class SpectralFormer(nn.Module):
             x = self.gaussian_noise(x)
         
         # Enhanced feature extraction
-        x = self.spectral_extract(x)  # Spectral features
-        spatial_feat = self.spatial_extract(x)  # Spatial features
+        x = self.spectral_extract(x)
+        spatial_feat = self.spatial_extract(x)
         
         # Multi-scale refinement
         refined_features = []
@@ -245,49 +264,49 @@ class SpectralFormer(nn.Module):
         x = torch.cat(pyramid_features, dim=1)
         x = self.classifier(x)
         
-        return x
-
-    def _init_weights(self, m):
-        if isinstance(m, nn.Conv2d):
-            nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-            if m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-        elif isinstance(m, nn.BatchNorm2d):
-            nn.init.constant_(m.weight, 1)
-            nn.init.constant_(m.bias, 0)
-        elif isinstance(m, nn.Linear):
-            nn.init.normal_(m.weight, std=0.02)
-            if m.bias is not None:
-                nn.init.constant_(m.bias, 0)
+        # Extract center pixel prediction
+        # Calculate center coordinates
+        center_h = h // 2
+        center_w = w // 2
+        center_prediction = x[:, :, center_h, center_w]
+        
+        return center_prediction
 
     def training_step(self, batch, device):
-        """Enhanced training step with adversarial defense."""
+        """Modified training step for center pixel classification."""
         data, labels = batch
         data, labels = data.to(device), labels.to(device)
         
+        # Ensure labels are for center pixel only
+        center_h, center_w = labels.shape[1] // 2, labels.shape[2] // 2
+        center_labels = labels[:, center_h, center_w]
+        
         # Use the adversarial loss
         criterion = HSIAdvLoss(self, epsilon=0.04, alpha=0.1)
-        loss, metrics = criterion(data, labels, training=True)
+        loss, metrics = criterion(data, center_labels, training=True)
     
         return loss
-
     
     def validation_step(self, batch, device):
-        """Single validation step."""
+        """Modified validation step for center pixel."""
         self.eval()
         with torch.no_grad():
             data, labels = batch
             data, labels = data.to(device), labels.to(device)
             
+            # Get center labels
+            center_h, center_w = labels.shape[1] // 2, labels.shape[2] // 2
+            center_labels = labels[:, center_h, center_w]
+            
             # Forward pass
             outputs = self(data)
             
             # Calculate metrics (only for non-zero labels)
-            mask = labels != 0
+            mask = center_labels != 0
             if mask.sum() > 0:
-                loss = F.cross_entropy(outputs[mask], labels[mask])
+                loss = F.cross_entropy(outputs[mask], center_labels[mask])
                 predictions = outputs.argmax(dim=1)
-                correct = (predictions[mask] == labels[mask]).float().mean()
+                correct = (predictions[mask] == center_labels[mask]).float().mean()
             else:
                 loss = torch.tensor(0.0, device=device)
                 correct = torch.tensor(0.0, device=device)

@@ -9,9 +9,9 @@ class HSIAdvLoss(nn.Module):
         self.epsilon = epsilon
         self.alpha = alpha
 
-    def generate_adversarial_examples(self, data, label_patches):
+    def generate_adversarial_examples(self, data, labels):
         """
-        Generate adversarial examples using FGSM.
+        Generate adversarial examples using FGSM for center pixel classification.
         """
         # Create a copy that requires gradients
         perturbed_data = data.detach().clone()
@@ -20,23 +20,17 @@ class HSIAdvLoss(nn.Module):
         # Forward pass
         outputs = self.model(perturbed_data)
         
-        # Reshape outputs to match label patches
-        batch_size = outputs.size(0)
-        num_classes = outputs.size(1)
-        patch_size = label_patches.size(1)
-        outputs = outputs.view(batch_size, num_classes, patch_size, patch_size)
-        
-        # Get valid mask for all pixels
-        valid_mask = (label_patches != 0)
+        # Get valid mask for center pixels
+        valid_mask = (labels != 0)
         
         if valid_mask.sum() == 0:
             return data
         
         # Calculate loss for valid pixels only
         loss = F.cross_entropy(
-            outputs.permute(0, 2, 3, 1).reshape(-1, num_classes),
-            label_patches.reshape(-1),
-            ignore_index=0  # Ignore padded pixels
+            outputs[valid_mask],
+            labels[valid_mask],
+            label_smoothing=0.1
         )
         
         # Calculate gradients
@@ -55,37 +49,30 @@ class HSIAdvLoss(nn.Module):
         
         return perturbed_data
 
-    def forward(self, data, label_patches, training=True):
+    def forward(self, data, labels, training=True):
         """
-        Forward pass computing both standard and adversarial loss.
+        Forward pass computing both standard and adversarial loss for center pixel classification.
         """
         metrics = {}
         
         # Standard forward pass
         outputs = self.model(data)
         
-        # Reshape outputs to match label patches
-        batch_size = outputs.size(0)
-        num_classes = outputs.size(1)
-        patch_size = label_patches.size(1)
-        outputs = outputs.view(batch_size, num_classes, patch_size, patch_size)
-        
         # Get valid mask (non-zero labels)
-        valid_mask = (label_patches != 0)
+        valid_mask = (labels != 0)
         
-        # Compute standard loss and accuracy for all valid pixels
+        # Compute standard loss and accuracy for valid pixels
         if valid_mask.sum() > 0:
             standard_loss = F.cross_entropy(
-                outputs.permute(0, 2, 3, 1).reshape(-1, num_classes),
-                label_patches.reshape(-1),
-                ignore_index=0,
+                outputs[valid_mask],
+                labels[valid_mask],
                 label_smoothing=0.1
             )
             
-            # Calculate pixel-wise accuracy
+            # Calculate accuracy
             predictions = outputs.argmax(dim=1)
-            correct_pixels = (predictions == label_patches) & valid_mask
-            accuracy = correct_pixels.float().sum() / valid_mask.float().sum()
+            correct_pixels = (predictions == labels) & valid_mask
+            accuracy = correct_pixels.float().mean()
         else:
             standard_loss = torch.tensor(0.0, device=data.device)
             accuracy = torch.tensor(0.0, device=data.device)
@@ -97,21 +84,20 @@ class HSIAdvLoss(nn.Module):
             if valid_mask.sum() > 0:
                 # Generate and evaluate adversarial examples
                 with torch.set_grad_enabled(True):
-                    perturbed_data = self.generate_adversarial_examples(data, label_patches)
+                    perturbed_data = self.generate_adversarial_examples(data, labels)
                     adv_outputs = self.model(perturbed_data)
-                    adv_outputs = adv_outputs.view(batch_size, num_classes, patch_size, patch_size)
                     
                     # Compute adversarial loss
                     adv_loss = F.cross_entropy(
-                        adv_outputs.permute(0, 2, 3, 1).reshape(-1, num_classes),
-                        label_patches.reshape(-1),
-                        ignore_index=0
+                        adv_outputs[valid_mask],
+                        labels[valid_mask],
+                        label_smoothing=0.1
                     )
                     
                     # Calculate adversarial accuracy
                     adv_predictions = adv_outputs.argmax(dim=1)
-                    correct_adv_pixels = (adv_predictions == label_patches) & valid_mask
-                    adv_accuracy = correct_adv_pixels.float().sum() / valid_mask.float().sum()
+                    correct_adv_pixels = (adv_predictions == labels) & valid_mask
+                    adv_accuracy = correct_adv_pixels.float().mean()
             else:
                 adv_loss = torch.tensor(0.0, device=data.device)
                 adv_accuracy = torch.tensor(0.0, device=data.device)

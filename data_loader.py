@@ -5,7 +5,6 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from sklearn.preprocessing import StandardScaler
 import scipy.io as sio
-from sklearn.model_selection import train_test_split
 import torch.nn.functional as F
 import random
 
@@ -14,18 +13,20 @@ class HSIDataLoader:
                  batch_size=32, train_split=0.2, val_split=0.6,
                  random_seed=42, num_workers=4):
         """
-        Initialize HSI Data Loader
+        Initialize HSI Data Loader for center pixel classification
         
         Args:
             dataset_name (str): Name of the dataset (e.g., 'Indian_pines', 'Pavia')
             data_dir (str): Directory containing the .mat files
-            patch_size (int): Size of spatial patches
+            patch_size (int): Size of spatial patches (must be odd)
             batch_size (int): Batch size for DataLoader
             train_split (float): Proportion of data for training
             val_split (float): Proportion of data for validation
             random_seed (int): Random seed for reproducibility
             num_workers (int): Number of workers for DataLoader
         """
+        assert patch_size % 2 == 1, "Patch size must be odd"
+        
         self.dataset_name = dataset_name
         self.data_dir = data_dir
         self.patch_size = patch_size
@@ -91,8 +92,8 @@ class HSIDataLoader:
             raise Exception(f"Error loading data: {str(e)}")
 
     def _create_patch_dataset(self, data, labels, train=True):
-        """Create a patch-based dataset"""
-        class PatchDataset(Dataset):
+        """Create a dataset for center pixel classification"""
+        class CenterPixelDataset(Dataset):
             def __init__(self, data, labels, patch_size, train=True):
                 self.data = torch.FloatTensor(data)
                 self.labels = torch.LongTensor(labels)
@@ -109,14 +110,6 @@ class HSIDataLoader:
                     mode='reflect'
                 ).permute(1, 2, 0)
                 
-                # Pad labels
-                self.padded_labels = F.pad(
-                    self.labels,
-                    (self.pad_size, self.pad_size, self.pad_size, self.pad_size),
-                    mode='constant',
-                    value=0
-                )
-                
                 # Get valid positions (non-zero labels)
                 self.valid_positions = [
                     (i, j) for i in range(labels.shape[0])
@@ -127,23 +120,20 @@ class HSIDataLoader:
             def __len__(self):
                 return len(self.valid_positions)
             
-            def _augment(self, patch, label_patch):
-                """Apply random augmentations"""
+            def _augment(self, patch):
+                """Apply random augmentations to the patch only"""
                 # Random rotation
                 k = random.randint(0, 3)
                 if k > 0:
                     patch = torch.rot90(patch, k, dims=[-2, -1])
-                    label_patch = torch.rot90(label_patch, k, dims=[-2, -1])
                 
                 # Random flip
                 if random.random() > 0.5:
                     patch = torch.flip(patch, dims=[-2])
-                    label_patch = torch.flip(label_patch, dims=[-2])
                 if random.random() > 0.5:
                     patch = torch.flip(patch, dims=[-1])
-                    label_patch = torch.flip(label_patch, dims=[-1])
                 
-                return patch, label_patch
+                return patch
             
             def __getitem__(self, idx):
                 # Get center position
@@ -151,27 +141,26 @@ class HSIDataLoader:
                 i += self.pad_size
                 j += self.pad_size
                 
-                # Extract patches
+                # Extract patch
                 patch = self.padded_data[
                     i-self.pad_size:i+self.pad_size+1,
                     j-self.pad_size:j+self.pad_size+1,
                     :
                 ]
-                label_patch = self.padded_labels[
-                    i-self.pad_size:i+self.pad_size+1,
-                    j-self.pad_size:j+self.pad_size+1
-                ]
+                
+                # Get center pixel label
+                label = self.labels[i-self.pad_size, j-self.pad_size]
                 
                 # Convert patch to (C, H, W) format
                 patch = patch.permute(2, 0, 1)
                 
                 # Apply augmentation for training
                 if self.train and random.random() > 0.5:
-                    patch, label_patch = self._augment(patch, label_patch)
+                    patch = self._augment(patch)
                 
-                return patch, label_patch
+                return patch, label
         
-        return PatchDataset(data, labels, self.patch_size, train)
+        return CenterPixelDataset(data, labels, self.patch_size, train)
     
     def _split_data(self):
         """Split data into train, validation, and test sets with stratification"""
@@ -293,7 +282,7 @@ class HSIDataLoader:
         )
         
         return train_loader, val_loader, test_loader
-    
+
     def get_dataset_info(self):
         """Get information about the dataset"""
         return {
