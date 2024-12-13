@@ -77,7 +77,7 @@ class HSIDataLoader:
             data_key = [k for k in data.keys() if not k.startswith('__')][0]
             gt_key = [k for k in labels.keys() if not k.startswith('__')][0]
             
-            data = data[data_key].astype(np.float32)
+            data = data[data_key].astype(np.float32) # Use 32 bit floating-point precision
             labels = labels[gt_key].astype(np.int64)
             
             # Normalize the data

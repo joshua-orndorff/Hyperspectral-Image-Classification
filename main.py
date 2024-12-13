@@ -22,15 +22,15 @@ CONFIG = {
         'dataset': 'Salinas',
         'data_dir': 'Data',
         'patch_size': 7,
-        'batch_size': 32,
+        'batch_size': 64,
         'train_size' : .2,
         'val_size' : .2
     },
     'training': {
-        'num_epochs': 200,
+        'num_epochs': 80,
         'learning_rate': 0.0001,
-        'weight_decay': 1e-4,
-        'patience': 20
+        'weight_decay': 0.0001,
+        'patience': 30
     },
     'paths': {
         'checkpoints': 'checkpoints',
@@ -242,7 +242,7 @@ def train_model(model, train_loader, val_loader, device, config):
     }
     
     # Initialize training components
-    criterion = HSIAdvLoss(model, epsilon=0.03, alpha=0.1)
+    criterion = HSIAdvLoss(model, epsilon=0.01, alpha=0.0)
     optimizer = optim.AdamW(model.parameters(), 
                            lr=config['training']['learning_rate'],
                            weight_decay=config['training']['weight_decay'])
@@ -390,6 +390,11 @@ def print_adversarial_results(results, num_classes):
     print(f"Clean Accuracy: {results['clean_accuracy']:.4f}")
     print(f"Adversarial Accuracy: {results['adversarial_accuracy']:.4f}")
     print(f"Robustness Gap: {results['clean_accuracy'] - results['adversarial_accuracy']:.4f}")
+    # Calculate robustness score
+    clean_correct = np.sum(np.diag(results['clean_confusion_matrix']))
+    adv_correct = np.sum(np.diag(results['adversarial_confusion_matrix']))
+    robustness_score = adv_correct / clean_correct if clean_correct > 0 else 0
+    print(f"Robustness Score: {robustness_score:.4f}")
     
     print("\nPer-Class Performance:")
     print("---------------------")
@@ -420,20 +425,14 @@ def print_adversarial_results(results, num_classes):
     
     print("\nOverall Statistics:")
     print("-----------------")
-    clean_correct = np.sum(np.diag(results['clean_confusion_matrix']))
-    adv_correct = np.sum(np.diag(results['adversarial_confusion_matrix']))
     total_samples = np.sum(results['clean_confusion_matrix'])
     
     print(f"Total Samples Evaluated: {total_samples}")
     print(f"Clean Correct Predictions: {clean_correct}")
     print(f"Adversarial Correct Predictions: {adv_correct}")
     print(f"Additional Misclassifications under Attack: {clean_correct - adv_correct}")
-    
-    # Calculate robustness score
-    robustness_score = adv_correct / clean_correct if clean_correct > 0 else 0
-    print(f"Robustness Score: {robustness_score:.4f}")
 
-def evaluate_model_with_attacks(model, test_loader, device, num_classes, epsilon=0.03):
+def evaluate_model_with_attacks(model, test_loader, device, num_classes, epsilon=0.01):
     """Evaluate model performance against adversarial attacks with center pixel predictions."""
     model.eval()
     all_preds = []
@@ -579,7 +578,7 @@ def main():
 
     print("\nAdversarial Evaluation:")
     adv_test_metrics = evaluate_model_with_attacks(model, test_loader, device, 
-                                                info['num_classes'], epsilon=0.03)
+                                                info['num_classes'], epsilon=0.01)
 
     # Plot confusion matrices
     class_names = [f'Class {i}' for i in range(info['num_classes'])]

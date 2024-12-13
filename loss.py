@@ -51,7 +51,8 @@ class HSIAdvLoss(nn.Module):
 
     def forward(self, data, labels, training=True):
         """
-        Forward pass computing both standard and adversarial loss for center pixel classification.
+        Forward pass computing standard loss for center pixel classification.
+        Only computes adversarial loss if alpha > 0 and in training mode.
         """
         metrics = {}
         
@@ -80,7 +81,7 @@ class HSIAdvLoss(nn.Module):
         metrics['standard_loss'] = standard_loss.item()
         metrics['accuracy'] = accuracy.item()
         
-        if training:
+        if training and self.alpha > 0:
             if valid_mask.sum() > 0:
                 # Generate and evaluate adversarial examples
                 with torch.set_grad_enabled(True):
@@ -113,6 +114,7 @@ class HSIAdvLoss(nn.Module):
             return total_loss, metrics
         
         metrics['total_loss'] = standard_loss.item()
+        metrics['valid_pixels'] = valid_mask.sum().item()
         return standard_loss, metrics
 
     def get_metrics_string(self, metrics):

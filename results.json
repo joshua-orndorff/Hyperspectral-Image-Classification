@@ -1,0 +1,190 @@
+{
+  "model_performance": {
+    "salinas": {
+      "epsilon_0.01": {
+        "without_adversarial_loss": {
+          "clean_accuracy": [0.9500, 0.9498, 0.9502],
+          "adversarial_accuracy": [0.8937, 0.8935, 0.8940],
+          "robustness_score": [0.9407, 0.9406, 0.9409]
+        },
+        "with_adversarial_loss": {
+          "clean_accuracy": [0.9543, 0.9476, 0.9509],
+          "adversarial_accuracy": [0.9224, 0.9125, 0.9173],
+          "robustness_score": [0.9934, 0.9360, 0.9647]
+        }
+      },
+      "epsilon_0.03": {
+        "without_adversarial_loss": {
+          "clean_accuracy": [0.9616, 0.9614, 0.9618],
+          "adversarial_accuracy": [0.8020, 0.8018, 0.8023],
+          "robustness_score": [0.8341, 0.8339, 0.8343]
+        },
+        "with_adversarial_loss": {
+          "clean_accuracy": [0.9466, 0.9438, 0.9585],
+          "adversarial_accuracy": [0.8458, 0.8568, 0.8568],
+          "robustness_score": [0.8935, 0.9078, 0.8939]
+        }
+      },
+      "epsilon_0.06": {
+        "without_adversarial_loss": {
+          "clean_accuracy": [0.9647, 0.9645, 0.9649],
+          "adversarial_accuracy": [0.6783, 0.6780, 0.6785],
+          "robustness_score": [0.7032, 0.7029, 0.7034]
+        },
+        "with_adversarial_loss": {
+          "clean_accuracy": [0.9594, 0.9500, 0.9571],
+          "adversarial_accuracy": [0.7346, 0.7682, 0.7304],
+          "robustness_score": [0.7657, 0.8086, 0.7631]
+          }
+      },
+      "epsilon_0.09": {
+        "without_adversarial_loss": {
+          "clean_accuracy": [0.9595, 0.9592, 0.9590],
+          "adversarial_accuracy": [0.6006, 0.6002, 0.6008],
+          "robustness_score": [0.6259, 0.6257, 0.6264]
+        },
+        "with_adversarial_loss": {
+          "clean_accuracy": [0.9439, 0.9510, 0.9525],
+          "adversarial_accuracy": [0.7302, 0.6867, 0.6522],
+          "robustness_score": [0.7736, 0.722, 0.684]
+        }
+      },
+      "epsilon_0.15": {
+        "without_adversarial_loss": {
+          "clean_accuracy": [0.9593, 0.9588, 0.9590],
+          "adversarial_accuracy": [0.5618, 0.5610, 0.5615],
+          "robustness_score": [0.5856, 0.5851, 0.5854]
+        },
+        "with_adversarial_loss": {
+          "clean_accuracy": [0.9364, 0.9360, 0.9362],
+          "adversarial_accuracy": [0.6711, 0.6708, 0.6715],
+          "robustness_score": [0.7167, 0.7165, 0.7172]
+        }
+      }
+    },
+    "pavia": {
+      "epsilon_0.01": {
+          "without_adversarial_loss": {
+            "clean_accuracy": [0.9897, 0.9899, 0.9895],
+            "adversarial_accuracy": [0.9867, 0.9870, 0.9865],
+            "robustness_score": [0.9970, 0.9971, 0.9969]
+          },
+          "with_adversarial_loss": {
+            "clean_accuracy": [0.9916, 0.9918, 0.9914],
+            "adversarial_accuracy": [0.9890, 0.9893, 0.9888],
+            "robustness_score": [0.9974, 0.9975, 0.9974]
+          }
+          },
+      "epsilon_0.03": {
+        "without_adversarial_loss": {
+          "clean_accuracy": [0.9903, 0.9905, 0.9901],
+          "adversarial_accuracy": [0.9812, 0.9815, 0.9810],
+          "robustness_score": [0.9909, 0.9910, 0.9908]
+        },
+        "with_adversarial_loss": {
+          "clean_accuracy": [0.9906, 0.9916, 0.9915],
+          "adversarial_accuracy": [0.9825, 0.9827, 0.9823],
+          "robustness_score": [0.9918, 0.9911, 0.9907]
+        }
+      },
+      "epsilon_0.06": {
+        "without_adversarial_loss": {
+          "clean_accuracy": [0.9910, 0.9915, 0.99],
+          "adversarial_accuracy": [0.9676, 0.9689, 0.9670],
+          "robustness_score": [0.9764, 0.9772, 0.9676]
+        },
+        "with_adversarial_loss": {
+          "clean_accuracy": [0.9916, 0.9915, 0.9907],
+          "adversarial_accuracy": [0.9714, 0.9727, 0.9722],
+          "robustness_score": [0.9746, 0.9810, 0.9813]
+        }
+      },
+      "epsilon_0.09": {
+        "without_adversarial_loss": {
+          "clean_accuracy": [0.9911, 0.9908, 0.9913],
+          "adversarial_accuracy": [0.9584, 0.9578, 0.9590],
+          "robustness_score": [0.9670, 0.9666, 0.9673]
+        },
+        "with_adversarial_loss": {
+          "clean_accuracy": [0.9909, 0.9914, 0.9907],
+          "adversarial_accuracy": [0.9619, 0.9600, 0.9631],
+          "robustness_score": [0.9707, 0.9683, 0.9721]
+        }
+      },
+      "epsilon_0.15": {
+        "without_adversarial_loss": {
+          "clean_accuracy": [0.9914, 0.9908, 0.9920],
+          "adversarial_accuracy": [0.9394, 0.9375, 0.9401],
+          "robustness_score": [0.9476, 0.9462, 0.9478]
+        },
+        "with_adversarial_loss": {
+          "clean_accuracy": [0.9921, 0.991, 0.9908],
+          "adversarial_accuracy": [0.9435, 0.9389, 0.9402],
+          "robustness_score": [0.9510, 0.9471, 0.9489]
+        }
+      }
+    },
+    "indian_pines": {
+      "epsilon_0.01": {
+        "without_adversarial_loss": {
+          "clean_accuracy": [0.9714, 0.9851, 0.9800],
+          "adversarial_accuracy": [0.9404, 0.9597, 0.9508],
+          "robustness_score": [0.9681, 0.9743, 0.9702]
+        },
+        "with_adversarial_loss": {
+          "clean_accuracy": [0.9854, 0.980, 0.9609],
+          "adversarial_accuracy": [0.9576, 0.9498, 0.9187],
+          "robustness_score": [0.9718, 0.9684, 0.9561]
+        }
+      },
+      "epsilon_0.03": {
+        "without_adversarial_loss": {
+          "clean_accuracy": [0.9765, 0.9852, 0.9727],
+          "adversarial_accuracy": [0.8378, 0.8508, 0.8415],
+          "robustness_score": [0.8580, 0.8635, 0.8651]
+        },
+        "with_adversarial_loss": {
+          "clean_accuracy": [0.9783, 0.98, 0.9864],
+          "adversarial_accuracy": [0.8693, 0.87, 0.892],
+          "robustness_score": [0.888, 0.8907, 0.9042]
+        }
+      },
+      "epsilon_0.06": {
+        "without_adversarial_loss": {
+          "clean_accuracy": [0.9830, 0.9789, 0.9752],
+          "adversarial_accuracy": [0.7063, 0.6634, 0.6824],
+          "robustness_score": [0.7185, 0.6777, 0.6998]
+        },
+        "with_adversarial_loss": {
+          "clean_accuracy": [0.9799, 0.9818, 0.9844],
+          "adversarial_accuracy": [0.7873, 0.8011, 0.7941],
+          "robustness_score": [0.8035, 0.8159, 0.8067]
+        }
+      },
+      "epsilon_0.09": {
+        "without_adversarial_loss": {
+          "clean_accuracy": [0.9817, 0.9805, 0.9870],
+          "adversarial_accuracy": [0.6131, 0.6392, 0.7266],
+          "robustness_score": [0.6245, 0.6519, 0.7361]
+        },
+        "with_adversarial_loss": {
+          "clean_accuracy": [0.9880, 0.9839, 0.983],
+          "adversarial_accuracy": [0.8269, 0.7641, 0.7142],
+          "robustness_score": [0.8370, 0.7766, 0.7266]
+        }
+      },
+      "epsilon_0.15": {
+        "without_adversarial_loss": {
+          "clean_accuracy": [0.9813, 0.9849, 0.9836],
+          "adversarial_accuracy": [0.5129, 0.6288, 0.5824],
+          "robustness_score": [0.5227, 0.6835, 0.5921]
+        },
+        "with_adversarial_loss": {
+          "clean_accuracy": [0.9851, 0.9833, 0.9756],
+          "adversarial_accuracy": [0.7779, 0.7867, 0.6366],
+          "robustness_score": [0.7897, 0.8000, 0.6525]
+        }
+      }
+    }
+  }
+}
